@@ -213,6 +213,8 @@ function WeReadPlugin:init()
     self.updater:schedule_auto_check()
     logger.info("initialized:", "version=", self.version)
     updater:cleanup_backup()
+    -- 注册划线弹窗中的「同步到微信读书」按钮
+    self:_initHighlightUpload()
 end
 
 Mixin.apply(WeReadPlugin, {
@@ -224,6 +226,7 @@ Mixin.apply(WeReadPlugin, {
     (require("weread.ui.annotations_controller")),
     (require("weread.ui.xpointer_overlay_controller")),
     (require("weread.ui.reader_navigation")),
+    (require("weread.ui.highlight_upload_controller")),
     (require("weread.lib.reader_lifecycle")),
 })
 
