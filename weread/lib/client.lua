@@ -870,4 +870,69 @@ function Client:get_review_comments(review_id, count, opts)
     end
     return true, parsed, nil
 end
+
+--- 添加划线到微信读书（网页版 Cookie API）
+-- 参考 miuread.koreader annotation_sync.lua 的 _bookmark_payload 格式
+-- @param payload table { bookId, chapterUid, chapterIdx, bookVersion, type, style, range, markText(base64), colorStyle }
+-- @return ok, err
+function Client:add_bookmark(payload)
+    if type(payload) ~= "table" then
+        return false, "add_bookmark: payload must be a table"
+    end
+    if not payload.bookId or not payload.chapterUid or not payload.range then
+        return false, "缺少必要参数（bookId/chapterUid/range）"
+    end
+
+    local url = "https://weread.qq.com/web/book/addBookmark"
+    logger.info("add_bookmark: POST", url,
+        "bookId=", payload.bookId, "chapterUid=", payload.chapterUid,
+        "chapterIdx=", payload.chapterIdx, "bookVersion=", payload.bookVersion,
+        "type=", payload.type, "style=", payload.style, "range=", payload.range,
+        "markText_len=", #(payload.markText or ""))
+
+    local ok, result, code = pcall(function()
+        return self:post_json(url, payload, {
+            diagnostic_api = "/web/book/addBookmark",
+            referer = "https://weread.qq.com/web/reader/" .. tostring(payload.bookId),
+        })
+    end)
+
+    if not ok then
+        logger.warn("add_bookmark: pcall failed", tostring(result))
+        return false, tostring(result)
+    end
+
+    if type(result) == "table" then
+        local resp_dump = {}
+        for k, v in pairs(result) do
+            resp_dump[#resp_dump + 1] = tostring(k) .. "=" .. tostring(v)
+        end
+        logger.info("add_bookmark: response HTTP", tostring(code),
+            "fields=", table.concat(resp_dump, ", "))
+
+        local errcode = tonumber(result.errcode or result.errCode)
+        local has_explicit_error = (errcode ~= nil and errcode < 0)
+            or (result.succ ~= nil and result.succ ~= 1 and result.succ ~= true)
+            or (result.errMsg ~= nil and result.errMsg ~= "")
+            or (result.errmsg ~= nil and result.errmsg ~= "")
+
+        if result.succ == 1 or result.success == true
+            or result.errCode == 0 or result.errcode == 0
+            or result.bookmarkId ~= nil or result.bookmarkID ~= nil
+            or (not has_explicit_error) then
+            logger.info("add_bookmark: success", "book=", payload.bookId,
+                "chapter=", payload.chapterUid, "range=", payload.range,
+                "bookmarkId=", tostring(result.bookmarkId or result.bookmarkID or "n/a"))
+            return true, result
+        end
+        local err = result.errMsg or result.errmsg or result.message
+            or result.msg or result.err or ("API 返回错误（HTTP " .. tostring(code or "?")
+            .. "）响应: " .. table.concat(resp_dump, ", "))
+        logger.warn("add_bookmark: API rejected", "err=", tostring(err))
+        return false, tostring(err)
+    end
+
+    logger.info("add_bookmark: success (no JSON)", "book=", payload.bookId, "code=", tostring(code))
+    return true
+end
 return Client
